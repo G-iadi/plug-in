@@ -190,21 +190,39 @@ function applyBlur(radius = 2) {
   // We add the CSS filter in Task 2 (style.css) but can also blur programmatically here if desired.
 }
 
-// Initialize
 function initFlower() {
   resizeCanvas();
-  drawFlower(1); // static for now; animation in next task
+  animateBloom();
 }
 
-// Run
+function animateBloom() {
+  const duration = 2500; // 2.5 seconds
+  const startTime = performance.now();
+
+  function frame(now) {
+    const elapsed = now - startTime;
+    const progress = Math.min(elapsed / duration, 1);
+    // Ease-out cubic for natural growth feel
+    const eased = 1 - Math.pow(1 - progress, 3);
+
+    drawFlower(eased);
+
+    if (progress < 1) {
+      requestAnimationFrame(frame);
+    }
+  }
+
+  requestAnimationFrame(frame);
+}
+
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', initFlower);
 } else {
   initFlower();
 }
 
-// Handle resize
 window.addEventListener('resize', () => {
   resizeCanvas();
+  // On resize, redraw fully bloomed flower
   drawFlower(1);
 });
