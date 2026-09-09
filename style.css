@@ -27,6 +27,7 @@ html, body {
   /* Pixelation effect: canvas internal resolution will be lower than display size */
   image-rendering: pixelated;
   image-rendering: crisp-edges;
+  filter: blur(1.5px); /* subtle blur */
 }
 
 /* Header: name centered, tagline below */

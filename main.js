@@ -139,6 +139,55 @@ function drawFlower(progress) {
 
   // Draw filaments
   filaments.forEach(f => drawFilament(cx, cy, f.angle, f.length, progress, f.curveBias));
+
+  // Apply dither after drawing
+  applyDither();
+}
+
+// Apply ordered dithering (Bayer 4x4) to the canvas
+function applyDither() {
+  const w = canvas.width;
+  const h = canvas.height;
+  const imageData = ctx.getImageData(0, 0, w, h);
+  const data = imageData.data;
+
+  // Bayer 4x4 threshold map (0-15 scaled to 0-255)
+  const bayer = [
+    [0, 8, 2, 10],
+    [12, 4, 14, 6],
+    [3, 11, 1, 9],
+    [15, 7, 13, 5],
+  ];
+
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      // Grayscale value
+      const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+      // Threshold from Bayer matrix
+      const threshold = (bayer[y % 4][x % 4] / 16) * 255;
+      // Apply dither: if pixel is brighter than threshold, lighten; else darken
+      const factor = gray > threshold ? 1.15 : 0.85;
+      data[i] = Math.min(255, r * factor);
+      data[i + 1] = Math.min(255, g * factor);
+      data[i + 2] = Math.min(255, b * factor);
+    }
+  }
+
+  ctx.putImageData(imageData, 0, 0);
+}
+
+// Apply selective blur to a region (used on filaments if needed)
+// For now, we apply a global light blur via CSS filter on the canvas element,
+// but we also support a programmatic blur on the canvas context.
+function applyBlur(radius = 2) {
+  // This is a placeholder for a potential selective blur.
+  // The main blur effect is achieved via CSS:
+  // canvas { filter: blur(1px); }
+  // We add the CSS filter in Task 2 (style.css) but can also blur programmatically here if desired.
 }
 
 // Initialize
