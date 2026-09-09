@@ -102,3 +102,17 @@ html, body {
     letter-spacing: 0.1em;
   }
 }
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  #flower-canvas {
+    filter: none;
+  }
+}
+
+/* Ensure text is readable if canvas fails to load */
+.no-canvas .site-header,
+.no-canvas .site-nav {
+  position: relative;
+  z-index: 10;
+}

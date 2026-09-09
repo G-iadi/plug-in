@@ -1,7 +1,12 @@
 // main.js
 
 const canvas = document.getElementById('flower-canvas');
-const ctx = canvas.getContext('2d');
+const ctx = canvas?.getContext('2d');
+
+if (!canvas || !ctx) {
+  console.warn('Canvas not supported');
+  document.body.classList.add('no-canvas');
+}
 
 // Internal resolution for pixelation effect
 const CANVAS_WIDTH = 400;
@@ -215,14 +220,19 @@ function animateBloom() {
   requestAnimationFrame(frame);
 }
 
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', initFlower);
-} else {
-  initFlower();
-}
+if (canvas && ctx) {
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initFlower);
+  } else {
+    initFlower();
+  }
 
-window.addEventListener('resize', () => {
-  resizeCanvas();
-  // On resize, redraw fully bloomed flower
-  drawFlower(1);
-});
+  let resizeTimeout;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimeout);
+    resizeTimeout = setTimeout(() => {
+      resizeCanvas();
+      drawFlower(1);
+    }, 100);
+  });
+}
