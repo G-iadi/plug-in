@@ -9,13 +9,17 @@ if (!canvas || !ctx) {
 const CANVAS_WIDTH = 720;
 const CANVAS_HEIGHT = 720;
 
-const ROT_X = 0.74;
-const ROT_Y = -0.32;
-const ROT_Z = (18 * Math.PI) / 180;
+const BASE_ROT_X = 0.74;
+const BASE_ROT_Y = -0.32;
+const BASE_ROT_Z = (18 * Math.PI) / 180;
+let ROT_X = BASE_ROT_X;
+let ROT_Y = BASE_ROT_Y;
+let ROT_Z = BASE_ROT_Z;
 const PERSPECTIVE = 0.0026;
-const SCALE = 3.12;
+const SCALE = 2.95;
 
-const LIGHT = { x: -0.78, y: 0.12, z: 0.58 };
+const BASE_LIGHT = { x: -0.78, y: 0.12, z: 0.58 };
+const LIGHT = { ...BASE_LIGHT };
 
 const COLORS = {
   bg: '#0a0a0f',
@@ -42,6 +46,35 @@ const COLORS = {
   anther: '#ffe566',
   antherEdge: '#ca8a04',
 };
+
+const LILAC_COLORS = { ...COLORS };
+
+const MAGENTA_COLORS = {
+  sepalLit: '#ffb7c8',
+  sepalMid: '#e11d48',
+  sepalDark: '#7f1d1d',
+  petalLit: '#ffe4ec',
+  petalMid: '#f43f5e',
+  petalDark: '#9f1239',
+  coronaBase: '#9f1239',
+  coronaBand: '#e11d48',
+  coronaMid: '#fecdd3',
+  coronaTip: '#4c0519',
+  innerCorona: '#fb7185',
+  disk: '#881337',
+  diskHot: '#fb7185',
+};
+
+const TINT_KEYS = Object.keys(MAGENTA_COLORS);
+
+let tintAmount = 0;
+
+function applyFlowerTint(amount) {
+  const t = Math.max(0, Math.min(1, amount));
+  TINT_KEYS.forEach((key) => {
+    COLORS[key] = mixHex(LILAC_COLORS[key], MAGENTA_COLORS[key], t);
+  });
+}
 
 function hexToRgb(hex) {
   const n = parseInt(hex.slice(1), 16);
@@ -110,9 +143,56 @@ function project(x, y, z) {
 
 const ORIGIN = { x: 0, y: 0 };
 
+function sampleTepalBounds() {
+  const structure = window.flowerStructure;
+  if (!structure) return null;
+
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+
+  const consider = (pt) => {
+    if (pt.x < minX) minX = pt.x;
+    if (pt.y < minY) minY = pt.y;
+    if (pt.x > maxX) maxX = pt.x;
+    if (pt.y > maxY) maxY = pt.y;
+  };
+
+  [...structure.sepals, ...structure.petals].forEach((t) => {
+    for (let i = 0; i <= 8; i++) {
+      const u = i / 8;
+      consider(projectTepal(t.angle, u, -1, t.length, t.width, 1, t.lift));
+      consider(projectTepal(t.angle, u, 1, t.length, t.width, 1, t.lift));
+    }
+  });
+
+  return { minX, minY, maxX, maxY };
+}
+
 function setOrigin() {
-  ORIGIN.x = CANVAS_WIDTH * 0.54;
-  ORIGIN.y = CANVAS_HEIGHT * 0.66;
+  const liveX = ROT_X;
+  const liveY = ROT_Y;
+  const liveZ = ROT_Z;
+  ROT_X = BASE_ROT_X;
+  ROT_Y = BASE_ROT_Y;
+  ROT_Z = BASE_ROT_Z;
+
+  ORIGIN.x = 0;
+  ORIGIN.y = 0;
+
+  const bounds = sampleTepalBounds();
+  if (bounds) {
+    ORIGIN.x = 88 - bounds.minX;
+    ORIGIN.y = 64 - bounds.minY;
+  } else {
+    ORIGIN.x = CANVAS_WIDTH * 0.55;
+    ORIGIN.y = CANVAS_HEIGHT * 0.42;
+  }
+
+  ROT_X = liveX;
+  ROT_Y = liveY;
+  ROT_Z = liveZ;
 }
 
 function litAmount(nx, ny, nz, angle) {
@@ -473,11 +553,11 @@ function depthOfTepal(t, progress) {
 
 function drawFlower(progress) {
   clearCanvas();
-  setOrigin();
 
   if (!window.flowerStructure) {
     window.flowerStructure = generateFlowerStructure();
   }
+  setOrigin();
   const { sepals, petals, corona, innerCorona, stamens, styles } = window.flowerStructure;
 
   const tepals = [
@@ -508,6 +588,8 @@ function drawFlower(progress) {
 let sourcePixels = null;
 let bloomDone = false;
 let animId = 0;
+let handGeomDirty = false;
+let fillAmount = 0;
 
 function prefersReducedMotion() {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -588,22 +670,46 @@ function stampDot(dst, w, h, cx, cy, radius, r, g, b) {
   }
 }
 
+function putSolidFlower() {
+  const w = canvas.width;
+  const h = canvas.height;
+  const out = ctx.createImageData(w, h);
+  const dst = out.data;
+  const src = sourcePixels.data;
+  for (let i = 0; i < dst.length; i += 4) {
+    const r = src[i];
+    const g = src[i + 1];
+    const b = src[i + 2];
+    if (isBg(r, g, b)) {
+      dst[i + 3] = 0;
+      continue;
+    }
+    dst[i] = r;
+    dst[i + 1] = g;
+    dst[i + 2] = b;
+    dst[i + 3] = 255;
+  }
+  ctx.putImageData(out, 0, 0);
+}
+
 function applyDither(src, now = 0) {
   const w = canvas.width;
   const h = canvas.height;
+  const fill = Math.max(0, Math.min(1, fillAmount));
+
+  if (fill >= 0.96 && sourcePixels) {
+    putSolidFlower();
+    return;
+  }
+
   const imageData = ctx.createImageData(w, h);
   const dst = imageData.data;
   const motion = !prefersReducedMotion();
   const drift = motion ? now * 0.0016 : 0;
 
-  for (let i = 0; i < dst.length; i += 4) {
-    dst[i] = 10;
-    dst[i + 1] = 10;
-    dst[i + 2] = 15;
-    dst[i + 3] = 255;
-  }
-
-  const minCell = 3.4;
+  const minCell = Math.max(1.8, 3.4 - fill * 2.3);
+  const jitter = 0.4 * (1 - fill * 0.75);
+  const wobbleAmp = motion ? 0.22 * (1 - fill) : 0;
 
   for (let y = minCell * 0.5; y < h; y += minCell) {
     const row = Math.round(y / minCell);
@@ -612,21 +718,22 @@ function applyDither(src, now = 0) {
       const { presence, luma, r, g, b, yellow } = samplePresence(src, w, h, x, y);
       if (presence < 0.07) continue;
 
-      const jx = (hash2(row, Math.round(x)) - 0.5) * minCell * 0.4;
-      const jy = (hash2(Math.round(x) + 9, row) - 0.5) * minCell * 0.4;
-      const wobbleX = motion ? Math.sin(drift + row * 0.35) * 0.22 : 0;
-      const wobbleY = motion ? Math.cos(drift * 0.85 + x * 0.02) * 0.22 : 0;
+      const jx = (hash2(row, Math.round(x)) - 0.5) * minCell * jitter;
+      const jy = (hash2(Math.round(x) + 9, row) - 0.5) * minCell * jitter;
+      const wobbleX = Math.sin(drift + row * 0.35) * wobbleAmp;
+      const wobbleY = Math.cos(drift * 0.85 + x * 0.02) * wobbleAmp;
       const cx = x + jx + wobbleX;
       const cy = y + jy + wobbleY;
 
       const gate = hash2(Math.round(cx * 3), Math.round(cy * 3));
-      const keepChance = yellow ? 0.92 : 0.2 + 0.42 * presence;
+      let keepChance = yellow ? 0.92 : 0.2 + 0.42 * presence;
+      keepChance = keepChance + (1 - keepChance) * fill;
       if (gate > keepChance) continue;
 
-      const pulse = motion ? 1 + Math.sin(drift * 0.9 + row * 0.25) * 0.03 : 1;
+      const pulse = motion ? 1 + Math.sin(drift * 0.9 + row * 0.25) * 0.03 * (1 - fill) : 1;
       const radius = (yellow
         ? 1.7 + luma * 1.4
-        : 0.65 + luma * luma * 2.35 + presence * 0.35) * pulse;
+        : 0.65 + luma * luma * 2.35 + presence * 0.35) * pulse * (1 + fill * 1.65);
       const avg = (r + g + b) / 3;
       const sat = yellow ? 1.7 : 1.45;
       stampDot(
@@ -664,19 +771,53 @@ function startAnimation() {
       const eased = 1 - Math.pow(1 - progress, 3);
       renderGeometry(eased);
       if (progress >= 1) bloomDone = true;
+    } else if (handGeomDirty) {
+      renderGeometry(1);
+      handGeomDirty = false;
     }
 
     if (sourcePixels) {
       applyDither(sourcePixels.data, now);
     }
 
-    if (!prefersReducedMotion() || !bloomDone) {
-      animId = requestAnimationFrame(frame);
-    }
+    animId = requestAnimationFrame(frame);
   }
 
   animId = requestAnimationFrame(frame);
 }
+
+function pinchClosed(openAmount) {
+  const open = Number(openAmount);
+  if (!Number.isFinite(open)) return null;
+  return 1 - Math.max(0, Math.min(1, open));
+}
+
+function setHandInfluence(openAmount) {
+  const closed = pinchClosed(openAmount);
+  if (closed == null) return;
+  fillAmount = Math.max(0, Math.min(1, fillAmount + (closed - fillAmount) * 0.18));
+}
+
+function setHandTint(openAmount) {
+  const closed = pinchClosed(openAmount);
+  if (closed == null) return;
+  const next = tintAmount + (closed - tintAmount) * 0.16;
+  if (Math.abs(next - tintAmount) < 0.004) return;
+  tintAmount = Math.max(0, Math.min(1, next));
+  applyFlowerTint(tintAmount);
+  if (bloomDone) handGeomDirty = true;
+}
+
+window.setHandInfluence = setHandInfluence;
+window.setHandTint = setHandTint;
+
+window.addEventListener('keydown', (event) => {
+  if (event.key === '+' || event.key === '=') {
+    fillAmount = Math.min(1, fillAmount + 0.08);
+  } else if (event.key === '-' || event.key === '_') {
+    fillAmount = Math.max(0, fillAmount - 0.08);
+  }
+});
 
 function initFlower() {
   resizeCanvas();
