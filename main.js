@@ -6,8 +6,8 @@ if (!canvas || !ctx) {
   document.body.classList.add('no-canvas');
 }
 
-const CANVAS_WIDTH = 720;
-const CANVAS_HEIGHT = 720;
+const DESIGN_SIZE = 720;
+const BASE_SCALE = 2.95;
 
 const BASE_ROT_X = 0.74;
 const BASE_ROT_Y = -0.32;
@@ -16,7 +16,8 @@ let ROT_X = BASE_ROT_X;
 let ROT_Y = BASE_ROT_Y;
 let ROT_Z = BASE_ROT_Z;
 const PERSPECTIVE = 0.0026;
-const SCALE = 2.95;
+let SCALE = BASE_SCALE;
+let pixelRatio = 1;
 
 const BASE_LIGHT = { x: -0.78, y: 0.12, z: 0.58 };
 const LIGHT = { ...BASE_LIGHT };
@@ -97,13 +98,19 @@ function mixHex(a, b, t) {
 }
 
 function resizeCanvas() {
-  canvas.width = CANVAS_WIDTH;
-  canvas.height = CANVAS_HEIGHT;
+  pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+  const cssW = Math.max(1, Math.floor(window.innerWidth));
+  const cssH = Math.max(1, Math.floor(window.innerHeight));
+  const w = Math.round(cssW * pixelRatio);
+  const h = Math.round(cssH * pixelRatio);
+  if (canvas.width !== w) canvas.width = w;
+  if (canvas.height !== h) canvas.height = h;
+  SCALE = BASE_SCALE * (Math.min(w, h) / DESIGN_SIZE);
 }
 
 function clearCanvas() {
   ctx.fillStyle = COLORS.bg;
-  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 }
 
 function rotateZ(x, y, z) {
@@ -182,12 +189,13 @@ function setOrigin() {
   ORIGIN.y = 0;
 
   const bounds = sampleTepalBounds();
+  const fit = Math.min(canvas.width, canvas.height) / DESIGN_SIZE;
   if (bounds) {
-    ORIGIN.x = 88 - bounds.minX;
-    ORIGIN.y = 64 - bounds.minY;
+    ORIGIN.x = 88 * fit - bounds.minX;
+    ORIGIN.y = 64 * fit - bounds.minY;
   } else {
-    ORIGIN.x = CANVAS_WIDTH * 0.55;
-    ORIGIN.y = CANVAS_HEIGHT * 0.42;
+    ORIGIN.x = canvas.width * 0.38;
+    ORIGIN.y = canvas.height * 0.28;
   }
 
   ROT_X = liveX;
@@ -641,7 +649,7 @@ function samplePresence(src, w, h, x, y) {
 }
 
 function stampDot(dst, w, h, cx, cy, radius, r, g, b) {
-  const rad = Math.max(0.65, radius);
+  const rad = Math.max(0.65 * pixelRatio, radius);
   const r2 = rad * rad;
   const minX = Math.max(0, Math.floor(cx - rad));
   const maxX = Math.min(w - 1, Math.ceil(cx + rad));
@@ -707,9 +715,9 @@ function applyDither(src, now = 0) {
   const motion = !prefersReducedMotion();
   const drift = motion ? now * 0.0016 : 0;
 
-  const minCell = Math.max(1.8, 3.4 - fill * 2.3);
+  const minCell = Math.max(1.8 * pixelRatio, (3.4 - fill * 2.3) * pixelRatio);
   const jitter = 0.4 * (1 - fill * 0.75);
-  const wobbleAmp = motion ? 0.22 * (1 - fill) : 0;
+  const wobbleAmp = motion ? 0.22 * pixelRatio * (1 - fill) : 0;
 
   for (let y = minCell * 0.5; y < h; y += minCell) {
     const row = Math.round(y / minCell);
@@ -733,7 +741,7 @@ function applyDither(src, now = 0) {
       const pulse = motion ? 1 + Math.sin(drift * 0.9 + row * 0.25) * 0.03 * (1 - fill) : 1;
       const radius = (yellow
         ? 1.7 + luma * 1.4
-        : 0.65 + luma * luma * 2.35 + presence * 0.35) * pulse * (1 + fill * 1.65);
+        : 0.65 + luma * luma * 2.35 + presence * 0.35) * pulse * (1 + fill * 1.65) * pixelRatio;
       const avg = (r + g + b) / 3;
       const sat = yellow ? 1.7 : 1.45;
       stampDot(
@@ -832,15 +840,16 @@ if (canvas && ctx) {
   }
 
   let resizeTimeout;
-  window.addEventListener('resize', () => {
+  function onViewportChange() {
     clearTimeout(resizeTimeout);
     resizeTimeout = setTimeout(() => {
       resizeCanvas();
       bloomDone = true;
       renderGeometry(1);
-      if (prefersReducedMotion() && sourcePixels) {
-        applyDither(sourcePixels.data, 0);
-      }
-    }, 100);
-  });
+      if (sourcePixels) applyDither(sourcePixels.data, performance.now());
+    }, 80);
+  }
+
+  window.addEventListener('resize', onViewportChange);
+  window.visualViewport?.addEventListener('resize', onViewportChange);
 }
