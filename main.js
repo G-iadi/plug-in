@@ -99,13 +99,17 @@ function mixHex(a, b, t) {
 
 function resizeCanvas() {
   pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
-  const cssW = Math.max(1, Math.floor(window.innerWidth));
-  const cssH = Math.max(1, Math.floor(window.innerHeight));
-  const w = Math.round(cssW * pixelRatio);
-  const h = Math.round(cssH * pixelRatio);
-  if (canvas.width !== w) canvas.width = w;
-  if (canvas.height !== h) canvas.height = h;
-  SCALE = BASE_SCALE * (Math.min(w, h) / DESIGN_SIZE);
+  const cssW = Math.max(1, Math.round(canvas.clientWidth || window.innerWidth));
+  const cssH = Math.max(1, Math.round(canvas.clientHeight || window.innerHeight));
+  const w = Math.max(1, Math.round(cssW * pixelRatio));
+  const h = Math.max(1, Math.round(cssH * pixelRatio));
+  const changed = canvas.width !== w || canvas.height !== h;
+  if (changed) {
+    canvas.width = w;
+    canvas.height = h;
+  }
+  SCALE = BASE_SCALE * (Math.min(cssW, cssH) / DESIGN_SIZE) * pixelRatio;
+  return changed;
 }
 
 function clearCanvas() {
@@ -597,7 +601,7 @@ let sourcePixels = null;
 let bloomDone = false;
 let animId = 0;
 let handGeomDirty = false;
-let fillAmount = 0;
+let sparseAmount = 0;
 
 function prefersReducedMotion() {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -703,21 +707,14 @@ function putSolidFlower() {
 function applyDither(src, now = 0) {
   const w = canvas.width;
   const h = canvas.height;
-  const fill = Math.max(0, Math.min(1, fillAmount));
-
-  if (fill >= 0.96 && sourcePixels) {
-    putSolidFlower();
-    return;
-  }
+  const sparse = Math.max(0, Math.min(1, sparseAmount));
 
   const imageData = ctx.createImageData(w, h);
   const dst = imageData.data;
-  const motion = !prefersReducedMotion();
-  const drift = motion ? now * 0.0016 : 0;
-
-  const minCell = Math.max(1.8 * pixelRatio, (3.4 - fill * 2.3) * pixelRatio);
-  const jitter = 0.4 * (1 - fill * 0.75);
-  const wobbleAmp = motion ? 0.22 * pixelRatio * (1 - fill) : 0;
+  const drift = now * 0.001;
+  const minCell = 3.05 * pixelRatio;
+  const jitter = 0.32;
+  const wobbleAmp = 0.16 * pixelRatio;
 
   for (let y = minCell * 0.5; y < h; y += minCell) {
     const row = Math.round(y / minCell);
@@ -728,20 +725,20 @@ function applyDither(src, now = 0) {
 
       const jx = (hash2(row, Math.round(x)) - 0.5) * minCell * jitter;
       const jy = (hash2(Math.round(x) + 9, row) - 0.5) * minCell * jitter;
-      const wobbleX = Math.sin(drift + row * 0.35) * wobbleAmp;
-      const wobbleY = Math.cos(drift * 0.85 + x * 0.02) * wobbleAmp;
+      const wobbleX = Math.sin(drift + row * 0.18) * wobbleAmp;
+      const wobbleY = Math.cos(drift * 0.7 + x * 0.012) * wobbleAmp;
       const cx = x + jx + wobbleX;
       const cy = y + jy + wobbleY;
 
-      const gate = hash2(Math.round(cx * 3), Math.round(cy * 3));
-      let keepChance = yellow ? 0.92 : 0.2 + 0.42 * presence;
-      keepChance = keepChance + (1 - keepChance) * fill;
+      const gate = hash2(row, Math.round(x));
+      let keepChance = yellow ? 0.96 : 0.28 + 0.48 * presence;
+      keepChance *= 1 - sparse * 0.55;
       if (gate > keepChance) continue;
 
-      const pulse = motion ? 1 + Math.sin(drift * 0.9 + row * 0.25) * 0.03 * (1 - fill) : 1;
+      const pulse = 1 + Math.sin(drift * 0.6 + row * 0.12) * 0.018;
       const radius = (yellow
-        ? 1.7 + luma * 1.4
-        : 0.65 + luma * luma * 2.35 + presence * 0.35) * pulse * (1 + fill * 1.65) * pixelRatio;
+        ? 1.85 + luma * 1.45
+        : 0.78 + luma * luma * 2.45 + presence * 0.42) * pulse * (1 - sparse * 0.42) * pixelRatio;
       const avg = (r + g + b) / 3;
       const sat = yellow ? 1.7 : 1.45;
       stampDot(
@@ -803,7 +800,8 @@ function pinchClosed(openAmount) {
 function setHandInfluence(openAmount) {
   const closed = pinchClosed(openAmount);
   if (closed == null) return;
-  fillAmount = Math.max(0, Math.min(1, fillAmount + (closed - fillAmount) * 0.18));
+  const sparse = 1 - closed;
+  sparseAmount = Math.max(0, Math.min(1, sparseAmount + (sparse - sparseAmount) * 0.18));
 }
 
 function setHandTint(openAmount) {
@@ -821,15 +819,22 @@ window.setHandTint = setHandTint;
 
 window.addEventListener('keydown', (event) => {
   if (event.key === '+' || event.key === '=') {
-    fillAmount = Math.min(1, fillAmount + 0.08);
+    sparseAmount = Math.max(0, sparseAmount - 0.08);
   } else if (event.key === '-' || event.key === '_') {
-    fillAmount = Math.max(0, fillAmount - 0.08);
+    sparseAmount = Math.min(1, sparseAmount + 0.08);
   }
 });
 
 function initFlower() {
   resizeCanvas();
   startAnimation();
+}
+
+function relayoutFlower() {
+  const changed = resizeCanvas();
+  if (!changed || !ctx || !bloomDone) return;
+  renderGeometry(1);
+  if (sourcePixels) applyDither(sourcePixels.data, performance.now());
 }
 
 if (canvas && ctx) {
@@ -839,17 +844,11 @@ if (canvas && ctx) {
     initFlower();
   }
 
-  let resizeTimeout;
-  function onViewportChange() {
-    clearTimeout(resizeTimeout);
-    resizeTimeout = setTimeout(() => {
-      resizeCanvas();
-      bloomDone = true;
-      renderGeometry(1);
-      if (sourcePixels) applyDither(sourcePixels.data, performance.now());
-    }, 80);
+  if (typeof ResizeObserver === 'function') {
+    const ro = new ResizeObserver(() => relayoutFlower());
+    ro.observe(canvas);
+  } else {
+    window.addEventListener('resize', relayoutFlower);
   }
-
-  window.addEventListener('resize', onViewportChange);
-  window.visualViewport?.addEventListener('resize', onViewportChange);
+  window.visualViewport?.addEventListener('resize', relayoutFlower);
 }

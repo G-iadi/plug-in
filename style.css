@@ -15,13 +15,17 @@ html, body {
   position: fixed;
   top: 0;
   left: 0;
-  width: 100%;
-  height: 100%;
+  width: 100vw;
+  height: 100vh;
+  width: 100dvw;
+  height: 100dvh;
   z-index: 2;
   image-rendering: auto;
   filter: none;
   background: transparent;
   pointer-events: none;
+  object-fit: contain;
+  object-position: top left;
 }
 
 #webcam-stage {
