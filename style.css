@@ -23,7 +23,7 @@ html, body {
   image-rendering: auto;
   filter: none;
   background: transparent;
-  pointer-events: none;
+  pointer-events: auto;
   object-fit: contain;
   object-position: top left;
 }

@@ -24,19 +24,19 @@ const LIGHT = { ...BASE_LIGHT };
 
 const COLORS = {
   bg: '#0a0a0f',
-  sepalLit: '#c4b0d8',
-  sepalMid: '#7a628f',
-  sepalDark: '#2e2238',
-  petalLit: '#fff8ff',
-  petalMid: '#c4b0dc',
-  petalDark: '#4a3658',
-  coronaBase: '#3b0a5c',
-  coronaBand: '#5b21b6',
-  coronaMid: '#ddd6fe',
-  coronaTip: '#1e1b4b',
-  innerCorona: '#7c3aed',
-  disk: '#2e1065',
-  diskHot: '#6d28d9',
+  sepalLit: '#7af8ff',
+  sepalMid: '#2b6cff',
+  sepalDark: '#0a1848',
+  petalLit: '#e8fbff',
+  petalMid: '#3ecbff',
+  petalDark: '#163a9a',
+  coronaBase: '#0c1f6b',
+  coronaBand: '#2563ff',
+  coronaMid: '#9aeeff',
+  coronaTip: '#02061c',
+  innerCorona: '#22d3ee',
+  disk: '#0f286e',
+  diskHot: '#4f8cff',
   column: '#e7e5e4',
   columnShade: '#78716c',
   ovary: '#86efac',
@@ -44,26 +44,26 @@ const COLORS = {
   style: '#fafaf9',
   stigma: '#44403c',
   filamentStamen: '#d6d3d1',
-  anther: '#ffe566',
-  antherEdge: '#ca8a04',
+  anther: '#fff200',
+  antherEdge: '#f59e0b',
 };
 
 const LILAC_COLORS = { ...COLORS };
 
 const MAGENTA_COLORS = {
-  sepalLit: '#ffb7c8',
-  sepalMid: '#e11d48',
-  sepalDark: '#7f1d1d',
-  petalLit: '#ffe4ec',
-  petalMid: '#f43f5e',
-  petalDark: '#9f1239',
-  coronaBase: '#9f1239',
-  coronaBand: '#e11d48',
-  coronaMid: '#fecdd3',
-  coronaTip: '#4c0519',
-  innerCorona: '#fb7185',
-  disk: '#881337',
-  diskHot: '#fb7185',
+  sepalLit: '#fffaf2',
+  sepalMid: '#e4d2b0',
+  sepalDark: '#6a5c48',
+  petalLit: '#fffdf8',
+  petalMid: '#f0e4c8',
+  petalDark: '#8a7b63',
+  coronaBase: '#b9a683',
+  coronaBand: '#e6d5b4',
+  coronaMid: '#fff6e4',
+  coronaTip: '#4f463a',
+  innerCorona: '#f3ead4',
+  disk: '#8f816c',
+  diskHot: '#efe4cc',
 };
 
 const TINT_KEYS = Object.keys(MAGENTA_COLORS);
@@ -476,8 +476,8 @@ function drawStamen(stamen, progress) {
   ctx.fillStyle = COLORS.anther;
   ctx.strokeStyle = COLORS.antherEdge;
   ctx.lineWidth = 0.55;
-  const aw = 7.8 * p * tip.depth;
-  const ah = 3.6 * p * tip.depth;
+  const aw = 11.2 * p * tip.depth;
+  const ah = 5.2 * p * tip.depth;
   ctx.beginPath();
   ctx.ellipse(tip.x, tip.y, aw, ah, stamen.angle * 0.4, 0, Math.PI * 2);
   ctx.fill();
@@ -627,10 +627,16 @@ function drawFlower(progress) {
 }
 
 let sourcePixels = null;
+const solidLayer = document.createElement('canvas');
+const solidCtx = solidLayer.getContext('2d');
 let bloomDone = false;
 let animId = 0;
 let handGeomDirty = false;
 let sparseAmount = 0;
+let pointerInside = false;
+const pointer = { x: 0, y: 0 };
+let revealAmount = 0;
+const REVEAL_RADIUS = 168;
 
 function prefersReducedMotion() {
   return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -638,6 +644,39 @@ function prefersReducedMotion() {
 
 function captureSource() {
   sourcePixels = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  if (solidLayer.width !== canvas.width || solidLayer.height !== canvas.height) {
+    solidLayer.width = canvas.width;
+    solidLayer.height = canvas.height;
+  }
+  solidCtx.putImageData(sourcePixels, 0, 0);
+}
+
+function canvasFromClient(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  const w = rect.width || 1;
+  const h = rect.height || 1;
+  pointer.x = ((clientX - rect.left) / w) * canvas.width;
+  pointer.y = ((clientY - rect.top) / h) * canvas.height;
+}
+
+function drawRealisticReveal() {
+  if (revealAmount < 0.01 || !solidLayer.width) return;
+
+  const radius = REVEAL_RADIUS * pixelRatio * revealAmount;
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(pointer.x, pointer.y, radius, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.drawImage(solidLayer, 0, 0);
+  ctx.restore();
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(pointer.x, pointer.y, radius, 0, Math.PI * 2);
+  ctx.strokeStyle = `rgba(232, 251, 255, ${0.28 * revealAmount})`;
+  ctx.lineWidth = 1.2 * pixelRatio;
+  ctx.stroke();
+  ctx.restore();
 }
 
 function hash2(x, y) {
@@ -658,7 +697,7 @@ function isBg(r, g, b) {
 }
 
 function isYellow(r, g, b) {
-  return r > 170 && g > 130 && b < 120 && r + g > b * 3.2;
+  return r > 155 && g > 115 && b < 140 && r >= g - 18 && r + g > b * 2.6;
 }
 
 function samplePresence(src, w, h, x, y) {
@@ -736,9 +775,9 @@ function putSolidFlower() {
 const ASCII_RAMP = ' .:-=+*#%@';
 
 function asciiGlyph(luma, presence, yellow) {
-  const t = Math.max(0, Math.min(1, yellow ? Math.max(luma, 0.78) : luma * 0.86 + presence * 0.28));
+  if (yellow) return '@';
+  const t = Math.max(0, Math.min(1, luma * 0.86 + presence * 0.28));
   let i = Math.floor(t * (ASCII_RAMP.length - 1) + 0.85);
-  if (yellow) i = Math.max(i, 7);
   if (i < 2 && presence > 0.05) i = 2;
   i = Math.max(0, Math.min(ASCII_RAMP.length - 1, i));
   return ASCII_RAMP[i];
@@ -773,15 +812,26 @@ function applyDither(src, now = 0) {
       const cy = y + jy + wobbleY;
 
       const gate = hash2(row, Math.round(x));
-      let keepChance = yellow ? 0.98 : 0.42 + 0.52 * presence;
-      keepChance *= 1 - sparse * 0.55;
+      let keepChance = yellow ? 1 : 0.42 + 0.52 * presence;
+      if (!yellow) keepChance *= 1 - sparse * 0.55;
       if (gate > keepChance) continue;
 
       const avg = (r + g + b) / 3;
-      const sat = yellow ? 1.7 : 1.45;
-      const cr = Math.min(255, avg + (r - avg) * sat);
-      const cg = Math.min(255, avg + (g - avg) * sat);
-      const cb = Math.min(255, avg + (b - avg) * sat);
+      const sat = yellow ? 2.35 : 1.45;
+      let cr = Math.min(255, avg + (r - avg) * sat);
+      let cg = Math.min(255, avg + (g - avg) * sat);
+      let cb = Math.min(255, avg + (b - avg) * sat);
+      if (yellow) {
+        cr = Math.min(255, cr * 0.35 + 255 * 0.65);
+        cg = Math.min(255, cg * 0.35 + 242 * 0.65);
+        cb = Math.min(80, cb * 0.25);
+        const prevFont = ctx.font;
+        ctx.font = `${Math.round(minCell * 1.45)}px ui-monospace, "SF Mono", Menlo, Consolas, monospace`;
+        ctx.fillStyle = `rgb(${cr | 0},${cg | 0},${cb | 0})`;
+        ctx.fillText(asciiGlyph(luma, presence, yellow), cx, cy);
+        ctx.font = prevFont;
+        continue;
+      }
       ctx.fillStyle = `rgb(${cr | 0},${cg | 0},${cb | 0})`;
       ctx.fillText(asciiGlyph(luma, presence, yellow), cx, cy);
     }
@@ -814,6 +864,13 @@ function startAnimation() {
     if (sourcePixels) {
       applyDither(sourcePixels.data, now);
     }
+
+    const revealTarget = pointerInside ? 1 : 0;
+    const revealEase = prefersReducedMotion() ? 1 : 0.22;
+    revealAmount += (revealTarget - revealAmount) * revealEase;
+    if (revealTarget === 0 && revealAmount < 0.01) revealAmount = 0;
+    if (revealTarget === 1 && revealAmount > 0.99) revealAmount = 1;
+    drawRealisticReveal();
 
     animId = requestAnimationFrame(frame);
   }
@@ -868,6 +925,25 @@ function relayoutFlower() {
 }
 
 if (canvas && ctx) {
+  canvas.style.pointerEvents = 'auto';
+
+  function updatePointer(event) {
+    const rect = canvas.getBoundingClientRect();
+    const inside =
+      event.clientX >= rect.left &&
+      event.clientX <= rect.right &&
+      event.clientY >= rect.top &&
+      event.clientY <= rect.bottom;
+    pointerInside = inside;
+    if (inside) canvasFromClient(event.clientX, event.clientY);
+  }
+
+  window.addEventListener('pointermove', updatePointer);
+  window.addEventListener('pointerdown', updatePointer);
+  window.addEventListener('pointerleave', () => {
+    pointerInside = false;
+  });
+
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initFlower);
   } else {
