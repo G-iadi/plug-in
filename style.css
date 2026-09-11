@@ -30,16 +30,14 @@ html, body {
 
 #webcam-stage {
   position: fixed;
-  right: 20px;
-  bottom: 20px;
-  width: 240px;
-  height: 180px;
-  transform: scaleX(-1);
-  border-radius: 12px;
+  left: 0;
+  bottom: 0;
+  width: 320px;
+  height: 240px;
+  opacity: 0;
   overflow: hidden;
-  z-index: 1;
+  z-index: 0;
   pointer-events: none;
-  background: #0a0a0f;
 }
 
 #webcam,
@@ -52,7 +50,6 @@ html, body {
 
 #webcam {
   object-fit: fill;
-  opacity: 0.88;
 }
 
 #hand-map {

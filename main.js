@@ -181,30 +181,40 @@ function sampleTepalBounds() {
   return { minX, minY, maxX, maxY };
 }
 
-function setOrigin() {
-  const liveX = ROT_X;
-  const liveY = ROT_Y;
-  const liveZ = ROT_Z;
-  ROT_X = BASE_ROT_X;
-  ROT_Y = BASE_ROT_Y;
-  ROT_Z = BASE_ROT_Z;
-
+function placeFlower(nx, ny) {
   ORIGIN.x = 0;
   ORIGIN.y = 0;
-
   const bounds = sampleTepalBounds();
   const fit = Math.min(canvas.width, canvas.height) / DESIGN_SIZE;
+  const mx = 36 * fit;
+  const my = 36 * fit;
   if (bounds) {
-    ORIGIN.x = 88 * fit - bounds.minX;
-    ORIGIN.y = 64 * fit - bounds.minY;
+    const w = bounds.maxX - bounds.minX;
+    const h = bounds.maxY - bounds.minY;
+    ORIGIN.x = mx + (canvas.width - 2 * mx - w) * nx - bounds.minX;
+    ORIGIN.y = my + (canvas.height - 2 * my - h) * ny - bounds.minY;
   } else {
-    ORIGIN.x = canvas.width * 0.38;
-    ORIGIN.y = canvas.height * 0.28;
+    ORIGIN.x = canvas.width * (0.22 + nx * 0.56);
+    ORIGIN.y = canvas.height * (0.22 + ny * 0.5);
   }
+}
 
-  ROT_X = liveX;
-  ROT_Y = liveY;
-  ROT_Z = liveZ;
+const POSE_A = {
+  rotX: BASE_ROT_X,
+  rotY: BASE_ROT_Y,
+  rotZ: BASE_ROT_Z,
+};
+
+const POSE_B = {
+  rotX: 0.58,
+  rotY: 0.34,
+  rotZ: (10 * Math.PI) / 180,
+};
+
+function applyPose(pose) {
+  ROT_X = pose.rotX;
+  ROT_Y = pose.rotY;
+  ROT_Z = pose.rotZ;
 }
 
 function litAmount(nx, ny, nz, angle) {
@@ -506,7 +516,7 @@ function drawStyle(style, progress) {
   ctx.fill();
 }
 
-function generateFlowerStructure() {
+function generateFlowerStructure(twist = 0.35, lengthMul = 1, stamenSpin = 0.5) {
   const sepals = [];
   const petals = [];
   const corona = [];
@@ -515,26 +525,26 @@ function generateFlowerStructure() {
   const styles = [];
 
   for (let i = 0; i < 5; i++) {
-    const base = (Math.PI * 2 / 5) * i + 0.35;
+    const base = (Math.PI * 2 / 5) * i + twist;
     sepals.push({
-      angle: base + (Math.random() - 0.5) * 0.1,
-      length: 90 + Math.random() * 12,
-      width: 36 + Math.random() * 8,
-      lift: 16 + Math.random() * 6,
+      angle: base + (Math.random() - 0.5) * 0.14,
+      length: (88 + Math.random() * 16) * lengthMul,
+      width: 34 + Math.random() * 10,
+      lift: 14 + Math.random() * 8,
     });
     petals.push({
-      angle: base + Math.PI / 5 + (Math.random() - 0.5) * 0.1,
-      length: 96 + Math.random() * 10,
-      width: 34 + Math.random() * 7,
-      lift: 20 + Math.random() * 8,
+      angle: base + Math.PI / 5 + (Math.random() - 0.5) * 0.16,
+      length: (92 + Math.random() * 14) * lengthMul,
+      width: 32 + Math.random() * 9,
+      lift: 18 + Math.random() * 10,
     });
   }
 
   for (let i = 0; i < 68; i++) {
     corona.push({
-      angle: (Math.PI * 2 / 68) * i + (Math.random() - 0.5) * 0.05,
+      angle: (Math.PI * 2 / 68) * i + twist * 0.3 + (Math.random() - 0.5) * 0.05,
       innerR: 15 + Math.random() * 2,
-      outerR: 52 + Math.random() * 16,
+      outerR: (48 + Math.random() * 18) * lengthMul,
       curveBias: (Math.random() - 0.5) * 0.1,
       width: 0.85 + Math.random() * 0.45,
       wave: (Math.random() - 0.5) * 6,
@@ -543,17 +553,17 @@ function generateFlowerStructure() {
 
   for (let i = 0; i < 32; i++) {
     innerCorona.push({
-      angle: (Math.PI * 2 / 32) * i,
+      angle: (Math.PI * 2 / 32) * i + twist * 0.2,
       innerR: 13,
       outerR: 24 + Math.random() * 5,
     });
   }
 
   for (let i = 0; i < 5; i++) {
-    stamens.push({ angle: (Math.PI * 2 / 5) * i + 0.5 });
+    stamens.push({ angle: (Math.PI * 2 / 5) * i + stamenSpin });
   }
   for (let i = 0; i < 3; i++) {
-    styles.push({ angle: (Math.PI * 2 / 3) * i - 0.4 });
+    styles.push({ angle: (Math.PI * 2 / 3) * i - 0.4 + twist * 0.4 });
   }
 
   return { sepals, petals, corona, innerCorona, stamens, styles };
@@ -563,14 +573,8 @@ function depthOfTepal(t, progress) {
   return projectTepal(t.angle, 0.55, 0, t.length, t.width, progress, t.lift).z;
 }
 
-function drawFlower(progress) {
-  clearCanvas();
-
-  if (!window.flowerStructure) {
-    window.flowerStructure = generateFlowerStructure();
-  }
-  setOrigin();
-  const { sepals, petals, corona, innerCorona, stamens, styles } = window.flowerStructure;
+function drawFlowerBody(structure, progress) {
+  const { sepals, petals, corona, innerCorona, stamens, styles } = structure;
 
   const tepals = [
     ...sepals.map((t) => ({ ...t, kind: 'sepal' })),
@@ -595,6 +599,31 @@ function drawFlower(progress) {
   drawAndrogynophore(progress);
   styles.forEach((s) => drawStyle(s, progress));
   stamens.forEach((s) => drawStamen(s, progress));
+}
+
+function drawFlower(progress) {
+  clearCanvas();
+
+  if (!window.flowerStructure) {
+    window.flowerStructure = generateFlowerStructure(0.35, 1, 0.5);
+  }
+  if (!window.flowerStructureB) {
+    window.flowerStructureB = generateFlowerStructure(1.12, 0.94, 1.15);
+  }
+
+  const savedScale = SCALE;
+
+  applyPose(POSE_A);
+  placeFlower(0, 0);
+  drawFlowerBody(window.flowerStructure, progress);
+
+  SCALE = savedScale * 0.95;
+  applyPose(POSE_B);
+  placeFlower(0.98, 0.58);
+  drawFlowerBody(window.flowerStructureB, progress);
+
+  SCALE = savedScale;
+  applyPose(POSE_A);
 }
 
 let sourcePixels = null;
@@ -704,24 +733,37 @@ function putSolidFlower() {
   ctx.putImageData(out, 0, 0);
 }
 
+const ASCII_RAMP = ' .:-=+*#%@';
+
+function asciiGlyph(luma, presence, yellow) {
+  const t = Math.max(0, Math.min(1, yellow ? Math.max(luma, 0.78) : luma * 0.86 + presence * 0.28));
+  let i = Math.floor(t * (ASCII_RAMP.length - 1) + 0.85);
+  if (yellow) i = Math.max(i, 7);
+  if (i < 2 && presence > 0.05) i = 2;
+  i = Math.max(0, Math.min(ASCII_RAMP.length - 1, i));
+  return ASCII_RAMP[i];
+}
+
 function applyDither(src, now = 0) {
   const w = canvas.width;
   const h = canvas.height;
   const sparse = Math.max(0, Math.min(1, sparseAmount));
 
-  const imageData = ctx.createImageData(w, h);
-  const dst = imageData.data;
+  ctx.clearRect(0, 0, w, h);
   const drift = now * 0.001;
-  const minCell = 3.05 * pixelRatio;
-  const jitter = 0.32;
+  const minCell = 7.6 * pixelRatio;
+  const jitter = 0.18;
   const wobbleAmp = 0.16 * pixelRatio;
+  ctx.font = `${Math.round(minCell * 1.02)}px ui-monospace, "SF Mono", Menlo, Consolas, monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
 
   for (let y = minCell * 0.5; y < h; y += minCell) {
     const row = Math.round(y / minCell);
     const hex = (row % 2) * minCell * 0.5;
     for (let x = minCell * 0.5 + hex; x < w; x += minCell) {
       const { presence, luma, r, g, b, yellow } = samplePresence(src, w, h, x, y);
-      if (presence < 0.07) continue;
+      if (presence < 0.05) continue;
 
       const jx = (hash2(row, Math.round(x)) - 0.5) * minCell * jitter;
       const jy = (hash2(Math.round(x) + 9, row) - 0.5) * minCell * jitter;
@@ -731,31 +773,19 @@ function applyDither(src, now = 0) {
       const cy = y + jy + wobbleY;
 
       const gate = hash2(row, Math.round(x));
-      let keepChance = yellow ? 0.96 : 0.28 + 0.48 * presence;
+      let keepChance = yellow ? 0.98 : 0.42 + 0.52 * presence;
       keepChance *= 1 - sparse * 0.55;
       if (gate > keepChance) continue;
 
-      const pulse = 1 + Math.sin(drift * 0.6 + row * 0.12) * 0.018;
-      const radius = (yellow
-        ? 1.85 + luma * 1.45
-        : 0.78 + luma * luma * 2.45 + presence * 0.42) * pulse * (1 - sparse * 0.42) * pixelRatio;
       const avg = (r + g + b) / 3;
       const sat = yellow ? 1.7 : 1.45;
-      stampDot(
-        dst,
-        w,
-        h,
-        cx,
-        cy,
-        radius,
-        Math.min(255, avg + (r - avg) * sat),
-        Math.min(255, avg + (g - avg) * sat),
-        Math.min(255, avg + (b - avg) * sat)
-      );
+      const cr = Math.min(255, avg + (r - avg) * sat);
+      const cg = Math.min(255, avg + (g - avg) * sat);
+      const cb = Math.min(255, avg + (b - avg) * sat);
+      ctx.fillStyle = `rgb(${cr | 0},${cg | 0},${cb | 0})`;
+      ctx.fillText(asciiGlyph(luma, presence, yellow), cx, cy);
     }
   }
-
-  ctx.putImageData(imageData, 0, 0);
 }
 
 function renderGeometry(progress) {
